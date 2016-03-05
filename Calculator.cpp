@@ -1,6 +1,7 @@
 #include <iostream>
 #include <unordered_map>
 #include <stack>
+#include <queue>
 #include <string>
 #include <cmath>
 
@@ -125,23 +126,25 @@ public:
 	virtual bool isOperator() = 0;
 };
 
-//WIP
 class Operand : public Token //Double or string. getVal will return either the double or a lookup of the string in the public hash.
 {
 private:
 	double value;
 	string label;
+	unordered_map<string, double>* memPtr;
 	//bool valid;
 public:
-	bool isOperator() {return false; }
-	double getValue();
-	Operand(double val, string lab = "") { value = val; label = lab; }
+	bool isOperator() { return false; }
+	double getValue() { return (label != "") ? getValFromMem() : value; }
+	string getLabel() { return label; }
+	Operand(double val, string lab = "", unordered_map<string, double>* _memPtr = nullptr) { value = val; label = lab; memPtr = _memPtr; if(label != "") memPtr->insert_or_assign(label, value); }
+	double getValFromMem() { return memPtr->at(label); }
 	//Ability to subscribe to a hash to update or null value when it's changed?
 };
 
 class Operator : public Token //+,-,*,/,^,let; precedence is determined by two sets of bits, the first 29 are the number of parenthesis, the last 3 are the operator precedence
 {
-private:
+protected:
 	int precedence;
 	char symbol;
 public:
@@ -153,66 +156,51 @@ public:
 	virtual Operand* calculate(Operand* a, Operand* b) = 0;
 };
 
-//WIP
 class Assign : public Operator
 {
 private:
-	int precedence = 0;
-	const char symbol = '=';
+	unordered_map<string, double>* memPtr;
 public:
 	Operand* Operator::calculate(Operand* a, Operand* b)
 	{
-		//TODO assign a to b
+		memPtr->insert_or_assign(b->getLabel(), a->getValue());
 		return b;
-		
 	}
-	Assign() {};
+	Assign(unordered_map<string, double>* _memPtr) { memPtr = _memPtr; precedence = 0; symbol = '='; }
 };
 
 class Add : public Operator
 {
-private:
-	int precedence = 1;
-	const char symbol = '+';
 public:
 	Operand* Operator::calculate(Operand* a, Operand* b)
 	{
 		return new Operand(a->getValue() + b->getValue());
 	}
-	Add() {};
+	Add() { precedence = 1; symbol = '+'; };
 };
 
 class Subtract : public Operator
 {
-private:
-	int precedence = 1;
-	const char symbol = '-';
 public:
 	Operand* Operator::calculate(Operand* a, Operand* b)
 	{
 		return new Operand(a->getValue() - b->getValue());
 	}
-	Subtract() {};
+	Subtract() { precedence = 1; symbol = '+'; };
 };
 
 class Multiply : public Operator
 {
-private:
-	int precedence = 2;
-	const char symbol = '*';
 public:
 	Operand* Operator::calculate(Operand* a, Operand* b)
 	{
 		return new Operand(a->getValue() * b->getValue());
 	}
-	Multiply() {};
+	Multiply() { precedence = 2; symbol = '*'; };
 };
 
 class Divide : public Operator
 {
-private:
-	int precedence = 2;
-	const char symbol = '/';
 public:
 	Operand* Operator::calculate(Operand* a, Operand* b)
 	{
@@ -220,86 +208,193 @@ public:
 			throw new exception("Divide-By-Zero");
 		return new Operand(a->getValue() / b->getValue());
 	}
-	Divide() {};
+	Divide() { precedence = 2; symbol = '/'; };
 };
 
 class Exponentiate : public Operator
 {
-private:
-	int precedence = 3;
-	const char symbol = '^';
 public:
 	Operand* Operator::calculate(Operand* a, Operand* b)
 	{
 		return new Operand(pow(a->getValue(), b->getValue()));
 	}
-	Exponentiate() {};
+	Exponentiate() { precedence = 3; symbol = '^'; };
 };
 
-//Expand Token Factory to make Operands as well
-//Figure out how to deal with negative numbers
 class TokenFactory
 {
+private:
+	unordered_map<string, double>* memPtr;
 public:
-	/*static Token* create(string tok)
+	Token* create(string tok)
 	{
-		if()
-	}*/
-	static Operator* create(char op)
-	{
-		switch (op)
-		{
-		case '+':
-			return new Add();
-			break;
-		case '-':
-			return new Subtract();
-			break;
-		case '*':
-			return new Multiply();
-			break;
-		case '/':
-			return new Divide();
-			break;
-		case '^':
-			return new Exponentiate();
-			break;
-		case '=':
-			return new Assign();
-			break;
-		default:
-			throw new exception("Bad Operator");
-		}
+		if(tok.size() == 1)
+			switch (tok[0])
+			{
+			case '+':
+				return new Add();
+				break;
+			case '-':
+				return new Subtract();
+				break;
+			case '*':
+				return new Multiply();
+				break;
+			case '/':
+				return new Divide();
+				break;
+			case '^':
+				return new Exponentiate();
+				break;
+			case '=':
+				return new Assign(memPtr);
+				break;
+			}
+
+		const char* cstr = tok.c_str();
+		char* nptr;
+		double val = strtod(cstr, &nptr);
+
+		if (val == 0 && nptr == cstr)//tok was not a valid double or operator, so it must be a variable
+			return new Operand(val, tok, memPtr);
+		else
+			return new Operand(val);
 	}
+	TokenFactory(unordered_map<string, double>* memory) { memPtr = memory; }
 };
 
 class Expression
 {
-	//Will have a Linked List for storing the postfix expression and a stack for working the equation
+	//Will have a queueed List for storing the postfix expression and a stack for working the equation
 private:
-	stack<Token*>* workingSpace;
-	Link<Token*>* expression;
+	stack<Token*> workingSpace;
+	queue<Token*> expression;
+	string infix;
+	unordered_map<string, double>* memory;
 public:
-	Expression()
+	Expression(unordered_map<string, double>* _memory)
 	{
-		expression = new Link<Token*>();
-		workingSpace = new stack<Token*>();
+		memory = _memory;
 	}
 
-	Expression(Link<Token*>* postfix)
+	Expression(queue<Token*> postfix, unordered_map<string, double>* _memory)
 	{
 		expression = postfix;
-		workingSpace = new stack<Token*>();
+		memory = _memory;
 	}
 
-	void Add(Token* element)
+	Expression(string _infix, unordered_map<string, double>* _memory)
 	{
-		Link<Token*>::Push(expression, element);
+		infix = _infix;
+		memory = _memory;
+		expression = infixToPostfix();
+	}
+
+	queue<Token*> infixToPostfix()
+	{
+		const string validNums = ".0123456789";
+		const string validOps = "/*-+^=";
+		TokenFactory* fac = new TokenFactory(memory);
+		queue<Token*> exp;
+		string tokenTemp = "";
+		int parenLevel = 0;
+		//Go through and mark the precidences, also convert to queueedList<Token>
+
+		for (int i = 0; i < infix.size(); i++)
+		{
+			if (infix[i] == ' ')
+				continue;
+			if (infix[i] == '(')
+			{
+				parenLevel++;
+				continue;
+			}
+			if (infix[i] == ')')
+			{
+				parenLevel--;
+				continue;
+			}
+			if (validOps.find(infix[i]) != string::npos)//If the character is an operator
+			{
+				Token* tok = fac->create(tokenTemp);
+				exp.push(tok);
+				tokenTemp = "";
+				tok = fac->create(string(1,infix[i]));
+				for (int j = 0; j < parenLevel; j++)
+					((Operator*)tok)->increasePrecedence();
+				exp.push(tok);
+				continue;
+			}
+			else if (validNums.find(infix[i]) != string::npos)//If the character is part of a number
+			{
+				tokenTemp = tokenTemp + infix[i];
+				continue;
+			}
+			else//The character is part of a variable name
+			{
+				tokenTemp = tokenTemp + infix[i];
+				continue;
+			}
+		}
+		Token* tok = fac->create(tokenTemp);
+		exp.push(tok);
+		tokenTemp = "";
+		
+		stack<Token*> opStack;
+		queue<Token*> opQueue;
+
+		for (Token* cur = exp.front(); exp.size() > 0; exp.pop())
+		{
+			cur = exp.front();
+			if (!cur->isOperator())
+			{
+				opQueue.push(cur);
+				continue;
+			}
+			Operator* curOp = (Operator*)cur;
+			while (curOp != NULL)
+			{
+				if (opStack.empty())
+				{
+					opStack.push(cur);
+					break;
+				}
+				Operator* topOp = (Operator*)opStack.top();
+
+				if (curOp->getPrecedence() > topOp->getPrecedence())
+				{
+					opStack.push(cur);
+					break;
+				}
+				if (curOp->getPrecedence() == topOp->getPrecedence())
+				{
+					if (topOp->getSymbol() != '^')
+					{
+						opQueue.push(opStack.top());
+						opStack.pop();
+					}
+					opStack.push(cur);
+					break;
+				}
+				if (curOp->getPrecedence() < topOp->getPrecedence())
+				{
+					opQueue.push(opStack.top());
+					opStack.pop();
+					continue;
+				}
+			}
+		}
+		while(!opStack.empty())
+		{
+			opQueue.push(opStack.top());
+			opStack.pop();
+		}
+		return opQueue;
 	}
 
 	double getResult()
 	{
-		while (expression->getNext())
+		while (!expression.empty())
 		{
 
 		}
@@ -310,14 +405,18 @@ public:
 class Calc
 {
 protected:
-	unordered_map<string,double> Memory;
-
+	unordered_map<string,double> memory;// If the operator was =, store it in the map
 public:
-
+	void input() {}
+	
 };
 
 int main()
 {
-
+	unordered_map<string, double>* mem = new unordered_map<string, double>();
+	cout << "Input Expression";
+	string in = "";
+	getline(cin, in);
+	Expression* x = new Expression(in, mem);
 	return 0;
 }
