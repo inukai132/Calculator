@@ -4,7 +4,7 @@
 #include <queue>
 #include <string>
 #include <cmath>
-
+#include <exception>
 
 using namespace std;
 
@@ -120,303 +120,374 @@ public:
 	}
 };
 
-class Token //Token will be the base for Operator and Operand. 
+class Calc//Will accept the input and if the input begins with 'let' Calc will evaluate the right of the '=' and assign it to the variable. If input begins with 'quit' will exit.
 {
-public:
-	virtual bool isOperator() = 0;
-};
 
-class Operand : public Token //Double or string. getVal will return either the double or a lookup of the string in the public hash.
-{
-private:
-	double value;
-	string label;
-	unordered_map<string, double>* memPtr;
-	//bool valid;
-public:
-	bool isOperator() { return false; }
-	double getValue() { return (label != "") ? getValFromMem() : value; }
-	string getLabel() { return label; }
-	Operand(double val, string lab = "", unordered_map<string, double>* _memPtr = nullptr) { value = val; label = lab; memPtr = _memPtr; if(label != "") memPtr->insert_or_assign(label, value); }
-	double getValFromMem() { return memPtr->at(label); }
-	//Ability to subscribe to a hash to update or null value when it's changed?
-};
-
-class Operator : public Token //+,-,*,/,^,let; precedence is determined by two sets of bits, the first 29 are the number of parenthesis, the last 3 are the operator precedence
-{
-protected:
-	int precedence;
-	char symbol;
-public:
-	bool isOperator() { return true; }
-	int getPrecedence() { return precedence; }
-	void increasePrecedence(int times=1) { precedence += 4 * times; }//By adding/subtracting 4 we adjust the parenthesis depth without affecting the operator precedence
-	void decreasePrecedence(int times=1) { precedence -= 4 * times; }
-	char getSymbol() { return symbol; }
-	virtual Operand* calculate(Operand* a, Operand* b) = 0;
-};
-
-class Assign : public Operator
-{
-private:
-	unordered_map<string, double>* memPtr;
-public:
-	Operand* Operator::calculate(Operand* a, Operand* b)
+	class Token //Token will be the base for Operator and Operand. 
 	{
-		memPtr->insert_or_assign(b->getLabel(), a->getValue());
-		return b;
-	}
-	Assign(unordered_map<string, double>* _memPtr) { memPtr = _memPtr; precedence = 0; symbol = '='; }
-};
+	public:
+		virtual bool isOperator() = 0;
+	};
 
-class Add : public Operator
-{
-public:
-	Operand* Operator::calculate(Operand* a, Operand* b)
+	class Operand : public Token //Double or string. getVal will return either the double or a lookup of the string in the public hash.
 	{
-		return new Operand(a->getValue() + b->getValue());
-	}
-	Add() { precedence = 1; symbol = '+'; };
-};
-
-class Subtract : public Operator
-{
-public:
-	Operand* Operator::calculate(Operand* a, Operand* b)
-	{
-		return new Operand(a->getValue() - b->getValue());
-	}
-	Subtract() { precedence = 1; symbol = '+'; };
-};
-
-class Multiply : public Operator
-{
-public:
-	Operand* Operator::calculate(Operand* a, Operand* b)
-	{
-		return new Operand(a->getValue() * b->getValue());
-	}
-	Multiply() { precedence = 2; symbol = '*'; };
-};
-
-class Divide : public Operator
-{
-public:
-	Operand* Operator::calculate(Operand* a, Operand* b)
-	{
-		if (b->getValue() == 0)
-			throw new exception("Divide-By-Zero");
-		return new Operand(a->getValue() / b->getValue());
-	}
-	Divide() { precedence = 2; symbol = '/'; };
-};
-
-class Exponentiate : public Operator
-{
-public:
-	Operand* Operator::calculate(Operand* a, Operand* b)
-	{
-		return new Operand(pow(a->getValue(), b->getValue()));
-	}
-	Exponentiate() { precedence = 3; symbol = '^'; };
-};
-
-class TokenFactory
-{
-private:
-	unordered_map<string, double>* memPtr;
-public:
-	Token* create(string tok)
-	{
-		if(tok.size() == 1)
-			switch (tok[0])
-			{
-			case '+':
-				return new Add();
-				break;
-			case '-':
-				return new Subtract();
-				break;
-			case '*':
-				return new Multiply();
-				break;
-			case '/':
-				return new Divide();
-				break;
-			case '^':
-				return new Exponentiate();
-				break;
-			case '=':
-				return new Assign(memPtr);
-				break;
-			}
-
-		const char* cstr = tok.c_str();
-		char* nptr;
-		double val = strtod(cstr, &nptr);
-
-		if (val == 0 && nptr == cstr)//tok was not a valid double or operator, so it must be a variable
-			return new Operand(val, tok, memPtr);
-		else
-			return new Operand(val);
-	}
-	TokenFactory(unordered_map<string, double>* memory) { memPtr = memory; }
-};
-
-class Expression
-{
-	//Will have a queueed List for storing the postfix expression and a stack for working the equation
-private:
-	stack<Token*> workingSpace;
-	queue<Token*> expression;
-	string infix;
-	unordered_map<string, double>* memory;
-public:
-	Expression(unordered_map<string, double>* _memory)
-	{
-		memory = _memory;
-	}
-
-	Expression(queue<Token*> postfix, unordered_map<string, double>* _memory)
-	{
-		expression = postfix;
-		memory = _memory;
-	}
-
-	Expression(string _infix, unordered_map<string, double>* _memory)
-	{
-		infix = _infix;
-		memory = _memory;
-		expression = infixToPostfix();
-	}
-
-	queue<Token*> infixToPostfix()
-	{
-		const string validNums = ".0123456789";
-		const string validOps = "/*-+^=";
-		TokenFactory* fac = new TokenFactory(memory);
-		queue<Token*> exp;
-		string tokenTemp = "";
-		int parenLevel = 0;
-		//Go through and mark the precidences, also convert to queueedList<Token>
-
-		for (int i = 0; i < infix.size(); i++)
+	private:
+		double value;
+		string label = "";
+		unordered_map<string, double>* memPtr;
+		//bool valid;
+	public:
+		bool isOperator() { return false; }
+		double getValue()
 		{
-			if (infix[i] == ' ')
-				continue;
-			if (infix[i] == '(')
-			{
-				parenLevel++;
-				continue;
-			}
-			if (infix[i] == ')')
-			{
-				parenLevel--;
-				continue;
-			}
-			if (validOps.find(infix[i]) != string::npos)//If the character is an operator
-			{
-				Token* tok = fac->create(tokenTemp);
-				exp.push(tok);
-				tokenTemp = "";
-				tok = fac->create(string(1,infix[i]));
-				for (int j = 0; j < parenLevel; j++)
-					((Operator*)tok)->increasePrecedence();
-				exp.push(tok);
-				continue;
-			}
-			else if (validNums.find(infix[i]) != string::npos)//If the character is part of a number
-			{
-				tokenTemp = tokenTemp + infix[i];
-				continue;
-			}
-			else//The character is part of a variable name
-			{
-				tokenTemp = tokenTemp + infix[i];
-				continue;
-			}
+			if (label != "")
+				return getValFromMem();
+			else
+				return value;
 		}
-		Token* tok = fac->create(tokenTemp);
-		exp.push(tok);
-		tokenTemp = "";
-		
-		stack<Token*> opStack;
-		queue<Token*> opQueue;
-
-		for (Token* cur = exp.front(); exp.size() > 0; exp.pop())
+		string getLabel() { return label; }
+		Operand(double val, string lab = "", unordered_map<string, double>* _memPtr = nullptr) { value = val; label = lab; memPtr = _memPtr; }
+		double getValFromMem()
 		{
-			cur = exp.front();
-			if (!cur->isOperator())
-			{
-				opQueue.push(cur);
-				continue;
-			}
-			Operator* curOp = (Operator*)cur;
-			while (curOp != NULL)
-			{
-				if (opStack.empty())
-				{
-					opStack.push(cur);
-					break;
-				}
-				Operator* topOp = (Operator*)opStack.top();
+			if (memPtr->find(label) == memPtr->end())
+				throw new exception("Undefined variable");
+			return memPtr->at(label);
+		}
+		//Ability to subscribe to a hash to update or null value when it's changed?
+	};
 
-				if (curOp->getPrecedence() > topOp->getPrecedence())
+	class Operator : public Token //+,-,*,/,^,let; precedence is determined by two sets of bits, the first 29 are the number of parenthesis, the last 3 are the operator precedence
+	{
+	protected:
+		int precedence;
+		char symbol;
+	public:
+		bool isOperator() { return true; }
+		int getPrecedence() { return precedence; }
+		void increasePrecedence(int times = 1) { precedence += 4 * times; }//By adding/subtracting 4 we adjust the parenthesis depth without affecting the operator precedence
+		char getSymbol() { return symbol; }
+		virtual Operand* calculate(Operand* a, Operand* b) = 0;
+	};
+
+	class Assign : public Operator
+	{
+	private:
+		unordered_map<string, double>* memPtr;
+	public:
+		Operand* Operator::calculate(Operand* a, Operand* b)
+		{
+			memPtr->insert_or_assign(b->getLabel(), a->getValue());
+			return b;
+		}
+		Assign(unordered_map<string, double>* _memPtr) { memPtr = _memPtr; precedence = 0; symbol = '='; }
+	};
+
+	class Add : public Operator
+	{
+	public:
+		Operand* Operator::calculate(Operand* a, Operand* b)
+		{
+			return new Operand(a->getValue() + b->getValue());
+		}
+		Add() { precedence = 1; symbol = '+'; };
+	};
+
+	class Subtract : public Operator
+	{
+	public:
+		Operand* Operator::calculate(Operand* a, Operand* b)
+		{
+			return new Operand(b->getValue() - a->getValue());
+		}
+		Subtract() { precedence = 1; symbol = '-'; };
+	};
+
+	class Multiply : public Operator
+	{
+	public:
+		Operand* Operator::calculate(Operand* a, Operand* b)
+		{
+			return new Operand(a->getValue() * b->getValue());
+		}
+		Multiply() { precedence = 2; symbol = '*'; };
+	};
+
+	class Divide : public Operator
+	{
+	public:
+		Operand* Operator::calculate(Operand* a, Operand* b)
+		{
+			if (a->getValue() == 0)
+				throw new exception("Divide-By-Zero");
+			return new Operand(b->getValue() / a->getValue());
+		}
+		Divide() { precedence = 2; symbol = '/'; };
+	};
+
+	class Exponentiate : public Operator
+	{
+	public:
+		Operand* Operator::calculate(Operand* a, Operand* b)
+		{
+			return new Operand(pow(b->getValue(), a->getValue()));
+		}
+		Exponentiate() { precedence = 3; symbol = '^'; };
+	};
+
+	class TokenFactory
+	{
+	private:
+		unordered_map<string, double>* memPtr;
+	public:
+		Token* create(string tok)
+		{
+			if (tok.size() == 1)
+				switch (tok[0])
 				{
-					opStack.push(cur);
+				case '+':
+					return new Add();
+					break;
+				case '-':
+					return new Subtract();
+					break;
+				case '*':
+					return new Multiply();
+					break;
+				case '/':
+					return new Divide();
+					break;
+				case '^':
+					return new Exponentiate();
+					break;
+				case '=':
+					return new Assign(memPtr);
 					break;
 				}
-				if (curOp->getPrecedence() == topOp->getPrecedence())
+
+			const char* cstr = tok.c_str();
+			char* nptr;
+			double val = strtod(cstr, &nptr);
+
+			if (val == 0 && nptr == cstr)//tok was not a valid double or operator, so it must be a variable
+				return new Operand(val, tok, memPtr);
+			else
+				return new Operand(val);
+		}
+		TokenFactory(unordered_map<string, double>* memory) { memPtr = memory; }
+	};
+
+	class Expression
+	{
+		//Will have a queueed List for storing the postfix expression and a stack for working the equation
+	private:
+		stack<Token*>* workingSpace;
+		queue<Token*> expression;
+		string infix;
+		unordered_map<string, double>* memory;
+	public:
+
+		Expression(string _infix, unordered_map<string, double>* _memory)
+		{
+			infix = _infix;
+			memory = _memory;
+			expression = infixToPostfix();
+		}
+
+		queue<Token*> infixToPostfix()
+		{
+			const string validNums = ".0123456789";
+			const string validOps = "/*-+^=";
+			TokenFactory* fac = new TokenFactory(memory);
+			queue<Token*> exp;
+			string tokenTemp = "";
+			int parenLevel = 0;
+			//Go through and mark the precidences, also convert to queueedList<Token>
+
+			for (int i = 0; i < infix.size(); i++)
+			{
+				if (infix[i] == ' ')
+					continue;
+				if (infix[i] == '(')
 				{
-					if (topOp->getSymbol() != '^')
-					{
-						opQueue.push(opStack.top());
-						opStack.pop();
-					}
-					opStack.push(cur);
-					break;
+					parenLevel++;
+					continue;
 				}
-				if (curOp->getPrecedence() < topOp->getPrecedence())
+				if (infix[i] == ')')
 				{
-					opQueue.push(opStack.top());
-					opStack.pop();
+					parenLevel--;
+					continue;
+				}
+				if (validOps.find(infix[i]) != string::npos)//If the character is an operator
+				{
+					Token* tok = fac->create(tokenTemp);
+					exp.push(tok);
+					tokenTemp = "";
+					tok = fac->create(string(1, infix[i]));
+					for (int j = 0; j < parenLevel; j++)
+						((Operator*)tok)->increasePrecedence();
+					exp.push(tok);
+					continue;
+				}
+				else if (validNums.find(infix[i]) != string::npos)//If the character is part of a number
+				{
+					tokenTemp = tokenTemp + infix[i];
+					continue;
+				}
+				else//The character is part of a variable name
+				{
+					tokenTemp = tokenTemp + infix[i];
 					continue;
 				}
 			}
-		}
-		while(!opStack.empty())
-		{
-			opQueue.push(opStack.top());
-			opStack.pop();
-		}
-		return opQueue;
-	}
+			Token* tok = fac->create(tokenTemp);
+			exp.push(tok);
+			tokenTemp = "";
 
-	double getResult()
+			stack<Token*> opStack;
+			queue<Token*> opQueue;
+
+			for (Token* cur = exp.front(); exp.size() > 0; exp.pop())
+			{
+				cur = exp.front();
+				if (!cur->isOperator())
+				{
+					opQueue.push(cur);
+					continue;
+				}
+				Operator* curOp = (Operator*)cur;
+				while (curOp != NULL)
+				{
+					if (opStack.empty())
+					{
+						opStack.push(cur);
+						break;
+					}
+					Operator* topOp = (Operator*)opStack.top();
+
+					if (curOp->getPrecedence() > topOp->getPrecedence())
+					{
+						opStack.push(cur);
+						break;
+					}
+					if (curOp->getPrecedence() == topOp->getPrecedence())
+					{
+						if (topOp->getSymbol() != '^')
+						{
+							opQueue.push(opStack.top());
+							opStack.pop();
+						}
+						opStack.push(cur);
+						break;
+					}
+					if (curOp->getPrecedence() < topOp->getPrecedence())
+					{
+						opQueue.push(opStack.top());
+						opStack.pop();
+						continue;
+					}
+				}
+			}
+			while (!opStack.empty())
+			{
+				opQueue.push(opStack.top());
+				opStack.pop();
+			}
+			return opQueue;
+		}
+
+		Operand* getResult()
+		{
+			workingSpace = new stack<Token*>();
+			while (!expression.empty())
+			{
+				workingSpace->push(expression.front());
+				expression.pop();
+				if (workingSpace->top()->isOperator())
+				{
+					Operator* func = (Operator*)workingSpace->top();
+					workingSpace->pop();
+					Operand* numA = (Operand*)workingSpace->top();
+					workingSpace->pop();
+					Operand* numB = (Operand*)workingSpace->top();
+					workingSpace->pop();
+
+					Operand* result = func->calculate(numA, numB);
+					workingSpace->push(result);
+				}
+			}
+			Operand* result = (Operand*)(workingSpace->top());
+			return result;
+		}
+	};
+
+private:
+	Expression* exp;
+protected:
+	unordered_map<string,double>* memory;
+public:
+	string getInput() 
 	{
-		while (!expression.empty())
-		{
+		string in = "";
+		getline(cin, in);
+		return in;
+	}
 
+	void parseInput(string input)
+	{
+		exp = new Expression(input, memory);
+	}
+
+	void start()
+	{
+		string in = getInput();;
+		while (in != "quit")
+		{
+			try
+			{
+				Operand* result;
+				if (in.substr(0, 3) == "let")
+				{
+					int splitPoint = in.find('=');
+					string varName = in.substr(3, splitPoint - 3);
+					int spaceTrimL = varName.find_first_not_of(' ');
+					int spaceTrimR = varName.find_last_not_of(' ');
+					varName = varName.substr(spaceTrimL, (spaceTrimR - spaceTrimL+1));
+					string expressionStr = in.substr(splitPoint+1);
+					parseInput(expressionStr);
+					result = exp->getResult();
+					memory->insert_or_assign(varName, result->getValue());
+				}
+				else
+				{
+					parseInput(in);
+					result = exp->getResult();
+				}
+				cout << result->getValue() << endl;
+			}
+			catch (exception* e)
+			{
+				cout << e->what() << endl;
+			}
+			in = getInput();
 		}
 	}
+	Calc() { memory = new unordered_map<string, double>(); };
 };
 
-
-class Calc
+template <typename T>
+class HashMap
 {
-protected:
-	unordered_map<string,double> memory;// If the operator was =, store it in the map
-public:
-	void input() {}
-	
+	//Array to hold values from 0-s, s=size ***Array holds a struct, T for the value and string for the key
+	//Function to convert string to int between 0 and s ***RESEARCH HASH FXNS {Add up (int)chars and % s
+	//Get, Set, Remove, Resize (Double size when full)
+
 };
 
 int main()
 {
-	unordered_map<string, double>* mem = new unordered_map<string, double>();
-	cout << "Input Expression";
-	string in = "";
-	getline(cin, in);
-	Expression* x = new Expression(in, mem);
+	Calc* calc = new Calc();
+
+	calc->start();
+
 	return 0;
 }
