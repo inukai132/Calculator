@@ -150,7 +150,7 @@ class Calc//Will accept the input and if the input begins with 'let' Calc will e
 		double getValFromMem()
 		{
 			if (memPtr->find(label) == memPtr->end())
-				throw new exception("Undefined variable");
+				throw new runtime_error("Undefined variable");
 			return memPtr->at(label);
 		}
 		//Ability to subscribe to a hash to update or null value when it's changed?
@@ -174,9 +174,9 @@ class Calc//Will accept the input and if the input begins with 'let' Calc will e
 	private:
 		unordered_map<string, double>* memPtr;
 	public:
-		Operand* Operator::calculate(Operand* a, Operand* b)
+		Operand* calculate(Operand* a, Operand* b)
 		{
-			memPtr->insert_or_assign(b->getLabel(), a->getValue());
+			memPtr->emplace(b->getLabel(), a->getValue());
 			return b;
 		}
 		Assign(unordered_map<string, double>* _memPtr) { memPtr = _memPtr; precedence = 0; symbol = '='; }
@@ -185,7 +185,7 @@ class Calc//Will accept the input and if the input begins with 'let' Calc will e
 	class Add : public Operator
 	{
 	public:
-		Operand* Operator::calculate(Operand* a, Operand* b)
+		Operand* calculate(Operand* a, Operand* b)
 		{
 			return new Operand(a->getValue() + b->getValue());
 		}
@@ -195,7 +195,7 @@ class Calc//Will accept the input and if the input begins with 'let' Calc will e
 	class Subtract : public Operator
 	{
 	public:
-		Operand* Operator::calculate(Operand* a, Operand* b)
+		Operand* calculate(Operand* a, Operand* b)
 		{
 			return new Operand(b->getValue() - a->getValue());
 		}
@@ -205,7 +205,7 @@ class Calc//Will accept the input and if the input begins with 'let' Calc will e
 	class Multiply : public Operator
 	{
 	public:
-		Operand* Operator::calculate(Operand* a, Operand* b)
+		Operand* calculate(Operand* a, Operand* b)
 		{
 			return new Operand(a->getValue() * b->getValue());
 		}
@@ -215,10 +215,10 @@ class Calc//Will accept the input and if the input begins with 'let' Calc will e
 	class Divide : public Operator
 	{
 	public:
-		Operand* Operator::calculate(Operand* a, Operand* b)
+		Operand* calculate(Operand* a, Operand* b)
 		{
 			if (a->getValue() == 0)
-				throw new exception("Divide-By-Zero");
+				throw new runtime_error("Divide-By-Zero");
 			return new Operand(b->getValue() / a->getValue());
 		}
 		Divide() { precedence = 2; symbol = '/'; };
@@ -227,7 +227,7 @@ class Calc//Will accept the input and if the input begins with 'let' Calc will e
 	class Exponentiate : public Operator
 	{
 	public:
-		Operand* Operator::calculate(Operand* a, Operand* b)
+		Operand* calculate(Operand* a, Operand* b)
 		{
 			return new Operand(pow(b->getValue(), a->getValue()));
 		}
@@ -455,7 +455,7 @@ public:
 					string expressionStr = in.substr(splitPoint+1);
 					parseInput(expressionStr);
 					result = exp->getResult();
-					memory->insert_or_assign(varName, result->getValue());
+					memory->emplace(varName, result->getValue());
 				}
 				else
 				{
