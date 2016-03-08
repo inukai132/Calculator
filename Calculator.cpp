@@ -5,6 +5,7 @@
 #include <string>
 #include <cmath>
 #include <exception>
+#include <vector>
 
 using namespace std;
 
@@ -120,6 +121,83 @@ public:
 	}
 };
 
+//Custom HashMap
+
+template <typename H>
+class HashMap
+{
+	struct kvp {string key; H* value; bool filled;};
+private:
+	//Array to hold values from 0-s, s=size ***Array holds a struct, T for the value and string for the key
+	kvp* hashTable;
+	int size;
+public:
+	HashMap()
+	{
+		hashTable[8] = {"",nullptr,false};
+		size = 8;
+	}
+	//Function to convert string to int between 0 and s ***RESEARCH HASH FXNS {Add up (int)chars and % s} add 1 if key misses (A miss is a non-empty and incorrect key)
+	int hashFunc(string key)
+	{
+		int hash = 0;
+		for(int i=0; i<key.size(); i++)
+		{
+			hash += key[i];
+		}
+		hash %= size;
+		int tries = 0;
+		while(hashTable[hash].filled && hashTable[hash].key != key && tries < size)
+		{
+			hash++;
+			hash %= size;
+			tries++;
+		}
+		if(tries == size)
+		{
+			resize(2);
+			return hashFunc(key);
+		}
+		return hash;
+	}	
+	//Exists, Get, Set, Remove, Resize (Double size when full)
+	bool exists(string key)
+	{
+		int hash = hashFunc(key);
+		return hashTable[hash].filled;
+	}
+	void set(string key, H value)
+	{
+		kvp pair = {key, &value, true};
+		int hash = hashFunc(key);
+		hashTable[hash] = pair;
+	}
+	H get(string key)
+	{
+		int hash = hashFunc(key);
+		return *hashTable[hash].value;
+	}
+	void remove(string key)
+	{
+		int hash = hashFunc(key);
+		hashTable[hash] = {"",NULL,false};
+		resize(1);
+	}
+	void resize(int factor = 2)
+	{
+		int oldSize = size;
+		size *= factor;
+		
+		kvp* oldTable = hashTable;
+		hashTable[size] = {"",NULL,false};
+		
+		for(int i=0; i<oldSize; i++)
+			if(!oldTable[i].filled)
+				set(oldTable[i].key, *oldTable[i].value);
+	}
+};
+
+
 class Calc//Will accept the input and if the input begins with 'let' Calc will evaluate the right of the '=' and assign it to the variable. If input begins with 'quit' will exit.
 {
 
@@ -134,8 +212,7 @@ class Calc//Will accept the input and if the input begins with 'let' Calc will e
 	private:
 		double value;
 		string label = "";
-		unordered_map<string, double>* memPtr;
-		//bool valid;
+		HashMap<double>* memPtr;
 	public:
 		bool isOperator() { return false; }
 		double getValue()
@@ -146,12 +223,12 @@ class Calc//Will accept the input and if the input begins with 'let' Calc will e
 				return value;
 		}
 		string getLabel() { return label; }
-		Operand(double val, string lab = "", unordered_map<string, double>* _memPtr = nullptr) { value = val; label = lab; memPtr = _memPtr; }
+		Operand(double val, string lab = "", HashMap<double>* _memPtr = nullptr) { value = val; label = lab; memPtr = _memPtr; }
 		double getValFromMem()
 		{
-			if (memPtr->find(label) == memPtr->end())
+			if (!memPtr->exists(label))
 				throw new runtime_error("Undefined variable");
-			return memPtr->at(label);
+			return memPtr->get(label);
 		}
 		//Ability to subscribe to a hash to update or null value when it's changed?
 	};
@@ -172,14 +249,14 @@ class Calc//Will accept the input and if the input begins with 'let' Calc will e
 	class Assign : public Operator
 	{
 	private:
-		unordered_map<string, double>* memPtr;
+		HashMap<double>* memPtr;
 	public:
 		Operand* calculate(Operand* a, Operand* b)
 		{
-			memPtr->emplace(b->getLabel(), a->getValue());
+			memPtr->set(b->getLabel(), a->getValue());
 			return b;
 		}
-		Assign(unordered_map<string, double>* _memPtr) { memPtr = _memPtr; precedence = 0; symbol = '='; }
+		Assign(HashMap<double>* _memPtr) { memPtr = _memPtr; precedence = 0; symbol = '='; }
 	};
 
 	class Add : public Operator
@@ -237,7 +314,7 @@ class Calc//Will accept the input and if the input begins with 'let' Calc will e
 	class TokenFactory
 	{
 	private:
-		unordered_map<string, double>* memPtr;
+		HashMap<double>* memPtr;
 	public:
 		Token* create(string tok)
 		{
@@ -273,20 +350,20 @@ class Calc//Will accept the input and if the input begins with 'let' Calc will e
 			else
 				return new Operand(val);
 		}
-		TokenFactory(unordered_map<string, double>* memory) { memPtr = memory; }
+		TokenFactory(HashMap<double>* memory) { memPtr = memory; }
 	};
 
 	class Expression
 	{
-		//Will have a queueed List for storing the postfix expression and a stack for working the equation
+		//Will have a queued List for storing the postfix expression and a stack for working the equation
 	private:
 		stack<Token*>* workingSpace;
 		queue<Token*> expression;
 		string infix;
-		unordered_map<string, double>* memory;
+		HashMap<double>* memory;
 	public:
 
-		Expression(string _infix, unordered_map<string, double>* _memory)
+		Expression(string _infix, HashMap<double>* _memory)
 		{
 			infix = _infix;
 			memory = _memory;
@@ -303,7 +380,7 @@ class Calc//Will accept the input and if the input begins with 'let' Calc will e
 			int parenLevel = 0;
 			//Go through and mark the precidences, also convert to queueedList<Token>
 
-			for (int i = 0; i < infix.size(); i++)
+			for (u_int32_t i = 0; i < infix.size(); i++)
 			{
 				if (infix[i] == ' ')
 					continue;
@@ -423,7 +500,7 @@ class Calc//Will accept the input and if the input begins with 'let' Calc will e
 private:
 	Expression* exp;
 protected:
-	unordered_map<string,double>* memory;
+	HashMap<double>* memory;
 public:
 	string getInput() 
 	{
@@ -439,7 +516,7 @@ public:
 
 	void start()
 	{
-		string in = getInput();;
+		string in = getInput();
 		while (in != "quit")
 		{
 			try
@@ -455,7 +532,7 @@ public:
 					string expressionStr = in.substr(splitPoint+1);
 					parseInput(expressionStr);
 					result = exp->getResult();
-					memory->emplace(varName, result->getValue());
+					memory->set(varName, result->getValue());
 				}
 				else
 				{
@@ -471,18 +548,8 @@ public:
 			in = getInput();
 		}
 	}
-	Calc() { memory = new unordered_map<string, double>(); };
+	Calc() { memory = new HashMap<double>(); }
 };
-
-template <typename T>
-class HashMap
-{
-	//Array to hold values from 0-s, s=size ***Array holds a struct, T for the value and string for the key
-	//Function to convert string to int between 0 and s ***RESEARCH HASH FXNS {Add up (int)chars and % s
-	//Get, Set, Remove, Resize (Double size when full)
-
-};
-
 int main()
 {
 	Calc* calc = new Calc();
@@ -491,3 +558,4 @@ int main()
 
 	return 0;
 }
+
